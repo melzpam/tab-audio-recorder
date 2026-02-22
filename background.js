@@ -33,6 +33,44 @@ function updateIcon(tabId, state) {
   });
 }
 
+// ─── Equalizer icon ───────────────────────────────────────────────────────────
+
+function drawEqualizerIcon(tabId, levels) {
+  try {
+    const SIZE = 48;
+    const canvas = new OffscreenCanvas(SIZE, SIZE);
+    const ctx = canvas.getContext('2d');
+
+    const BAR_W = 8;
+    const GAP = 3;
+    const NUM = 4;
+    const TOTAL_W = NUM * BAR_W + (NUM - 1) * GAP; // 41px
+    const START_X = Math.floor((SIZE - TOTAL_W) / 2); // 3px
+    const MAX_H = SIZE - 10;
+    const BOTTOM = SIZE - 5;
+    const MIN_H = 3;
+
+    // Single gradient spanning full height — short bars show only green
+    const grad = ctx.createLinearGradient(0, BOTTOM, 0, BOTTOM - MAX_H);
+    grad.addColorStop(0, '#4ade80');   // green  (low level)
+    grad.addColorStop(0.6, '#facc15'); // yellow (mid level)
+    grad.addColorStop(1, '#f87171');   // red    (high level)
+    ctx.fillStyle = grad;
+
+    for (let i = 0; i < NUM; i++) {
+      const h = Math.round(MIN_H + (levels[i] / 255) * (MAX_H - MIN_H));
+      ctx.fillRect(START_X + i * (BAR_W + GAP), BOTTOM - h, BAR_W, h);
+    }
+
+    chrome.action.setIcon(
+      { imageData: ctx.getImageData(0, 0, SIZE, SIZE), tabId },
+      () => void chrome.runtime.lastError
+    );
+  } catch (e) {
+    console.error('[background] drawEqualizerIcon error:', e);
+  }
+}
+
 async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -114,6 +152,15 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target !== 'background') return;
+
+  if (message.action === 'levels') {
+    const state = tabStates.get(message.tabId);
+    if (state?.state === 'recording') {
+      drawEqualizerIcon(message.tabId, message.levels);
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
 
   if (message.action === 'save') {
     tabStates.delete(message.tabId);
