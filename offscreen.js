@@ -1,0 +1,112 @@
+// Map<tabId, { recorder: MediaRecorder, stream: MediaStream, chunks: Blob[] }>
+const recordings = new Map();
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.target !== 'offscreen') return;
+
+  handleMessage(message)
+    .then(() => sendResponse({ ok: true }))
+    .catch((e) => {
+      console.error('[offscreen] error:', e);
+      sendResponse({ ok: false, error: e.message });
+    });
+
+  return true; // keep channel open for async response
+});
+
+async function handleMessage({ action, streamId, tabId, filename }) {
+  switch (action) {
+    case 'start':
+      await startRecording(tabId, streamId, filename);
+      break;
+    case 'pause':
+      pauseRecording(tabId);
+      break;
+    case 'resume':
+      resumeRecording(tabId);
+      break;
+    case 'stop':
+      stopRecording(tabId);
+      break;
+  }
+}
+
+async function startRecording(tabId, streamId, filename) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      mandatory: {
+        chromeMediaSource: 'tab',
+        chromeMediaSourceId: streamId,
+      },
+    },
+    video: false,
+  });
+
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
+
+  // Echo the stream back to speakers — without this, tabCapture silences the tab
+  const audioEl = new Audio();
+  audioEl.srcObject = stream;
+  audioEl.play();
+
+  const chunks = [];
+  const recorder = new MediaRecorder(stream, { mimeType });
+
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) {
+      chunks.push(e.data);
+    }
+  };
+
+  recorder.onstop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    recordings.delete(tabId);
+
+    if (chunks.length === 0) {
+      console.warn('[offscreen] no audio chunks, skipping save');
+      chrome.runtime.sendMessage({ target: 'background', action: 'save_failed', tabId });
+      return;
+    }
+
+    const blob = new Blob(chunks, { type: mimeType });
+
+    // Convert to base64 data URL — the only reliable way to pass binary
+    // data from offscreen to background service worker for chrome.downloads.
+    const reader = new FileReader();
+    reader.onload = () => {
+      chrome.runtime.sendMessage(
+        { target: 'background', action: 'save', tabId, dataUrl: reader.result, filename },
+        () => void chrome.runtime.lastError
+      );
+    };
+    reader.onerror = (e) => console.error('[offscreen] FileReader error:', e);
+    reader.readAsDataURL(blob);
+  };
+
+  // Collect chunks every second to limit memory usage per chunk
+  recorder.start(1000);
+  recordings.set(tabId, { recorder, stream, chunks, audioEl });
+}
+
+function pauseRecording(tabId) {
+  const rec = recordings.get(tabId);
+  if (rec?.recorder.state === 'recording') {
+    rec.recorder.pause();
+  }
+}
+
+function resumeRecording(tabId) {
+  const rec = recordings.get(tabId);
+  if (rec?.recorder.state === 'paused') {
+    rec.recorder.resume();
+  }
+}
+
+function stopRecording(tabId) {
+  const rec = recordings.get(tabId);
+  if (rec) {
+    rec.recorder.stop();
+  }
+}

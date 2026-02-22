@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Audio Recorder",
+  "version": "1.0",
+  "description": "Record audio from any browser tab",
+  "permissions": [
+    "tabCapture",
+    "downloads",
+    "notifications",
+    "tabs",
+    "offscreen"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_icon": {
+      "48": "icons/idle.png"
+    },
+    "default_title": "Record Tab Audio"
+  },
+  "icons": {
+    "48": "icons/idle.png"
+  }
+}
