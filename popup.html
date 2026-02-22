@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Tab Audio Recorder</title>
+  <style>
+    /* ── MD3 Color Tokens — Dark Scheme ─────────────────────────────────── */
+    :root {
+      --md-primary:              #FFB4AB;
+      --md-on-primary:           #690005;
+      --md-primary-container:    #93000A;
+      --md-on-primary-container: #FFDAD6;
+      --md-secondary:              #CCC2DC;
+      --md-secondary-container:    #4A4458;
+      --md-on-secondary-container: #E8DEF8;
+      --md-tertiary:              #EFB8C8;
+      --md-tertiary-container:    #633B48;
+      --md-on-tertiary-container: #FFD8E4;
+      --md-surface:                    #141218;
+      --md-surface-container-low:      #1D1B20;
+      --md-surface-container:          #211F26;
+      --md-surface-container-high:     #2B2930;
+      --md-surface-container-highest:  #36343B;
+      --md-on-surface:         #E6E0E9;
+      --md-on-surface-variant: #CAC4D0;
+      --md-outline:         #938F99;
+      --md-outline-variant: #49454F;
+      --md-success: #6DD58C;
+      --shape-xs:   4px;
+      --shape-sm:   8px;
+      --shape-md:   12px;
+      --shape-lg:   16px;
+      --shape-xl:   28px;
+      --shape-full: 9999px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      background: var(--md-surface);
+      color: var(--md-on-surface);
+      font-family: 'Google Sans', -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── MD3 Navigation Tabs ────────────────────────────────────────────── */
+    .md3-tabs {
+      display: flex;
+      background: var(--md-surface-container);
+      border-bottom: 1px solid var(--md-outline-variant);
+    }
+    .md3-tab {
+      flex: 1;
+      padding: 14px 0 11px;
+      border: none;
+      background: none;
+      color: var(--md-on-surface-variant);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-tab::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 16%; right: 16%;
+      height: 3px;
+      background: var(--md-primary);
+      border-radius: 3px 3px 0 0;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .md3-tab.active          { color: var(--md-primary); }
+    .md3-tab.active::after   { opacity: 1; }
+    .md3-tab:hover:not(.active) { color: var(--md-on-surface); background: rgba(230,224,233,.06); }
+
+    /* ── Panels ─────────────────────────────────────────────────────────── */
+    .panel        { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Recording Panel ────────────────────────────────────────────────── */
+    #panel-recording.active { display: flex; flex-direction: column; }
+
+    .recording-top {
+      padding: 20px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .state-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 14px 5px 10px;
+      border-radius: var(--shape-full);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      transition: background .3s, color .3s;
+    }
+    .state-chip.idle      { background: var(--md-surface-container-high); color: var(--md-on-surface-variant); }
+    .state-chip.recording { background: rgba(147,0,10,.35);  color: var(--md-primary); }
+    .state-chip.paused    { background: rgba(99,59,72,.45);   color: var(--md-tertiary); }
+    .state-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+    .state-chip.recording .state-dot { animation: blink 1.1s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .md3-timer {
+      font-size: 56px;
+      font-weight: 300;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -2px;
+      line-height: 1;
+      margin-bottom: 6px;
+      transition: color .3s;
+    }
+    .md3-timer.idle      { color: var(--md-outline); }
+    .md3-timer.recording { color: var(--md-primary); }
+    .md3-timer.paused    { color: var(--md-tertiary); }
+
+    .file-size-label {
+      font-size: 13px;
+      color: var(--md-on-surface-variant);
+      min-height: 20px;
+      margin-bottom: 28px;
+      letter-spacing: 0.2px;
+    }
+
+    .recording-controls { display: flex; gap: 8px; width: 100%; }
+
+    /* ── MD3 Filled Button ──────────────────────────────────────────────── */
+    .md3-btn-filled {
+      flex: 1;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 20px; border: none;
+      border-radius: var(--shape-full);
+      background: var(--md-primary-container);
+      color: var(--md-on-primary-container);
+      font-family: inherit; font-size: 14px; font-weight: 500; letter-spacing: .1px;
+      cursor: pointer; transition: box-shadow .15s, opacity .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-btn-filled:hover    { box-shadow: 0 1px 3px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.3); }
+    .md3-btn-filled:disabled { opacity: .38; cursor: default; }
+
+    /* ── MD3 Tonal Button ───────────────────────────────────────────────── */
+    .md3-btn-tonal {
+      flex: 1;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 20px; border: none;
+      border-radius: var(--shape-full);
+      background: var(--md-secondary-container);
+      color: var(--md-on-secondary-container);
+      font-family: inherit; font-size: 14px; font-weight: 500; letter-spacing: .1px;
+      cursor: pointer; transition: box-shadow .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-btn-tonal:hover { box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+
+    /* ── MD3 Outlined Button ────────────────────────────────────────────── */
+    .md3-btn-outlined {
+      flex: 1;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 20px;
+      border: 1px solid var(--md-outline);
+      border-radius: var(--shape-full);
+      background: transparent; color: var(--md-on-surface-variant);
+      font-family: inherit; font-size: 14px; font-weight: 500; letter-spacing: .1px;
+      cursor: pointer; transition: background .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-btn-outlined:hover { background: rgba(230,224,233,.06); }
+
+    /* ── MD3 Text Button ────────────────────────────────────────────────── */
+    .md3-btn-text {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 36px; padding: 0 12px; border: none;
+      border-radius: var(--shape-full);
+      background: none; color: var(--md-primary);
+      font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background .15s; white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-btn-text:hover    { background: rgba(255,180,171,.1); }
+    .md3-btn-text:disabled { opacity: .38; cursor: default; }
+
+    /* ── MD3 Icon Button ────────────────────────────────────────────────── */
+    .md3-icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border: none;
+      border-radius: var(--shape-full);
+      background: none; color: var(--md-on-surface-variant);
+      cursor: pointer; transition: background .15s, color .15s;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-icon-btn:hover       { background: rgba(230,224,233,.1); color: var(--md-on-surface); }
+    .md3-icon-btn.icon-copied { color: var(--md-success); }
+
+    /* ── History Section (within Recording panel) ───────────────────────── */
+    .history-section { border-top: 1px solid var(--md-outline-variant); }
+    .history-section-header {
+      padding: 8px 16px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--md-on-surface-variant);
+    }
+    #history-list { max-height: 220px; overflow-y: auto; }
+
+    .history-empty {
+      padding: 44px 20px;
+      text-align: center;
+      color: var(--md-on-surface-variant);
+      font-size: 14px;
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 8px 10px 16px;
+      gap: 4px;
+      transition: background .12s;
+    }
+    .history-item:hover { background: rgba(230,224,233,.04); }
+
+    .history-item-body { flex: 1; min-width: 0; }
+
+    .history-name-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    /* Clickable filename — opens Finder/Explorer with file highlighted */
+    .history-filename {
+      flex: 1;
+      font-size: 13px;
+      font-family: 'Roboto Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+      color: var(--md-on-surface);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-decoration-color: var(--md-outline-variant);
+      text-underline-offset: 3px;
+      transition: color .15s, text-decoration-color .15s;
+    }
+    .history-filename:hover {
+      color: var(--md-primary);
+      text-decoration-color: var(--md-primary);
+      text-decoration-style: solid;
+    }
+
+    .history-meta {
+      font-size: 12px;
+      color: var(--md-on-surface-variant);
+      margin-top: 3px;
+    }
+
+    .history-divider {
+      height: 1px;
+      background: var(--md-outline-variant);
+      margin: 0 16px;
+      opacity: 0.4;
+    }
+
+    /* ── Settings Panel ─────────────────────────────────────────────────── */
+    #panel-settings { padding: 16px; }
+
+    .settings-group { margin-bottom: 18px; }
+
+    /* MD3 Filled Text Field */
+    .md3-field {
+      background: var(--md-surface-container-highest);
+      border-radius: var(--shape-xs) var(--shape-xs) 0 0;
+      padding: 8px 12px 0;
+    }
+    .md3-field-label {
+      display: block;
+      font-size: 11px; font-weight: 500;
+      color: var(--md-on-surface-variant);
+      letter-spacing: 0.4px; text-transform: uppercase;
+      margin-bottom: 3px;
+      transition: color .15s;
+    }
+    .md3-field:focus-within .md3-field-label { color: var(--md-primary); }
+    .md3-field-input {
+      display: block; width: 100%;
+      background: none; border: none; outline: none;
+      color: var(--md-on-surface);
+      font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+      font-size: 13px;
+      padding: 0 0 9px;
+    }
+    .md3-field-line {
+      height: 1px; background: var(--md-outline);
+      transition: height .15s, background .15s;
+    }
+    .md3-field:focus-within .md3-field-line { height: 2px; background: var(--md-primary); }
+
+    .md3-field-support {
+      font-size: 11px;
+      color: var(--md-on-surface-variant);
+      padding: 4px 12px 0;
+    }
+
+    /* MD3 Input Chips */
+    .md3-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+    .md3-chip {
+      display: inline-flex; align-items: center;
+      height: 28px; padding: 0 10px;
+      border-radius: var(--shape-sm);
+      border: 1px solid var(--md-outline-variant);
+      background: none; color: var(--md-on-surface-variant);
+      font-family: 'Roboto Mono', 'SF Mono', ui-monospace, monospace;
+      font-size: 12px; cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-chip:hover { background: rgba(202,196,208,.1); border-color: var(--md-outline); color: var(--md-on-surface); }
+
+    /* MD3 Checkbox row */
+    .md3-checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 10px 12px;
+      border-radius: var(--shape-sm);
+      cursor: pointer;
+      transition: background .12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-checkbox-row:hover { background: rgba(230,224,233,.05); }
+
+    .md3-checkbox {
+      width: 18px; height: 18px;
+      margin-top: 2px;
+      accent-color: var(--md-primary);
+      cursor: pointer; flex-shrink: 0;
+    }
+    .md3-checkbox-text   { font-size: 14px; color: var(--md-on-surface); }
+    .md3-checkbox-support {
+      font-size: 12px; color: var(--md-on-surface-variant); margin-top: 2px;
+    }
+
+    /* Save button */
+    .md3-btn-save {
+      display: block; width: 100%; height: 40px; border: none;
+      border-radius: var(--shape-full);
+      background: var(--md-secondary-container);
+      color: var(--md-on-secondary-container);
+      font-family: inherit; font-size: 14px; font-weight: 500; letter-spacing: .1px;
+      cursor: pointer; transition: box-shadow .15s, background .2s, color .2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .md3-btn-save:hover  { box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+    .md3-btn-save.saved  { background: rgba(109,213,140,.15); color: var(--md-success); }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation tabs -->
+  <nav class="md3-tabs" role="tablist">
+    <button class="md3-tab active" data-tab="recording" role="tab">Recording</button>
+    <button class="md3-tab"        data-tab="settings"  role="tab">Settings</button>
+  </nav>
+
+  <!-- ── Recording + History ────────────────────────────────────────────── -->
+  <section id="panel-recording" class="panel active" role="tabpanel">
+    <div class="recording-top">
+      <div class="state-chip idle" id="state-chip">
+        <span class="state-dot"></span>
+        <span id="state-label">Idle</span>
+      </div>
+
+      <div class="md3-timer idle" id="timer">--:--</div>
+      <div class="file-size-label" id="file-size"></div>
+
+      <div class="recording-controls">
+        <button class="md3-btn-filled"   id="btn-start">&#9654; Start</button>
+        <button class="md3-btn-tonal"    id="btn-pause"  style="display:none">&#9646;&#9646; Pause</button>
+        <button class="md3-btn-tonal"    id="btn-resume" style="display:none">&#9654; Resume</button>
+        <button class="md3-btn-outlined" id="btn-stop"   style="display:none">&#9632; Stop</button>
+      </div>
+    </div>
+
+    <div class="history-section">
+      <div class="history-section-header">Recent Recordings</div>
+      <div id="history-list"></div>
+    </div>
+  </section>
+
+  <!-- ── Settings ───────────────────────────────────────────────────────── -->
+  <section id="panel-settings" class="panel" role="tabpanel">
+
+    <!-- Filename mask -->
+    <div class="settings-group">
+      <div class="md3-field">
+        <label class="md3-field-label" for="mask-input">Filename mask</label>
+        <input type="text" class="md3-field-input" id="mask-input"
+               placeholder="recording-{title}-{date}" spellcheck="false" autocomplete="off">
+        <div class="md3-field-line"></div>
+      </div>
+      <div class="md3-chips">
+        <button class="md3-chip" data-placeholder="{title}">{title}</button>
+        <button class="md3-chip" data-placeholder="{domain}">{domain}</button>
+        <button class="md3-chip" data-placeholder="{date}">{date}</button>
+        <button class="md3-chip" data-placeholder="{time}">{time}</button>
+        <button class="md3-chip" data-placeholder="{datetime}">{datetime}</button>
+      </div>
+    </div>
+
+    <!-- Save folder -->
+    <div class="settings-group">
+      <div class="md3-field">
+        <label class="md3-field-label" for="folder-input">Save folder</label>
+        <input type="text" class="md3-field-input" id="folder-input"
+               placeholder="Recordings" spellcheck="false" autocomplete="off">
+        <div class="md3-field-line"></div>
+      </div>
+      <div class="md3-field-support" id="folder-hint">Subfolder within your Downloads directory</div>
+    </div>
+
+    <!-- Domain grouping -->
+    <div class="settings-group">
+      <label class="md3-checkbox-row" for="cb-domain-groups">
+        <input type="checkbox" class="md3-checkbox" id="cb-domain-groups">
+        <div>
+          <div class="md3-checkbox-text">Group by domain</div>
+          <div class="md3-checkbox-support">Creates a subfolder per domain&thinsp;—&thinsp;e.g. <em>Recordings/youtube.com/</em></div>
+        </div>
+      </label>
+    </div>
+
+    <button class="md3-btn-save" id="btn-save-settings">Save settings</button>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

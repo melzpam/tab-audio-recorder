@@ -58,26 +58,19 @@ async function startRecording(tabId, streamId, filename) {
   try {
     audioCtx = new AudioContext();
     const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 64;                  // 32 frequency bins
+    analyser.fftSize = 32;                  // 16 frequency bins — one per equalizer bar
     analyser.smoothingTimeConstant = 0.75;  // smooth decay between frames
     audioCtx.createMediaStreamSource(stream).connect(analyser);
 
-    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    const freqData = new Uint8Array(analyser.frequencyBinCount); // 16 values
     levelIntervalId = setInterval(() => {
-      if (recordings.get(tabId)?.recorder.state !== 'recording') return;
       analyser.getByteFrequencyData(freqData);
-      // 4 bands: bass / low-mid / mid-high / presence
       chrome.runtime.sendMessage(
         {
           target: 'background',
           action: 'levels',
           tabId,
-          levels: [
-            Math.max(freqData[0], freqData[1]),
-            Math.max(freqData[2], freqData[3], freqData[4]),
-            Math.max(freqData[5], freqData[6], freqData[7], freqData[8]),
-            Math.max(freqData[9], freqData[10], freqData[11], freqData[12]),
-          ],
+          levels: Array.from(freqData), // all 16 bins → 16 radial bars
         },
         () => void chrome.runtime.lastError
       );
@@ -88,10 +81,17 @@ async function startRecording(tabId, streamId, filename) {
 
   const chunks = [];
   const recorder = new MediaRecorder(stream, { mimeType });
+  const entry = { recorder, stream, chunks, audioEl, audioCtx, levelIntervalId, totalBytes: 0 };
+  recordings.set(tabId, entry);
 
   recorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0) {
       chunks.push(e.data);
+      entry.totalBytes += e.data.size;
+      chrome.runtime.sendMessage(
+        { target: 'background', action: 'size', tabId, bytes: entry.totalBytes },
+        () => void chrome.runtime.lastError
+      );
     }
   };
 
@@ -124,7 +124,6 @@ async function startRecording(tabId, streamId, filename) {
 
   // Collect chunks every second to limit memory usage per chunk
   recorder.start(1000);
-  recordings.set(tabId, { recorder, stream, chunks, audioEl, audioCtx, levelIntervalId });
 }
 
 function pauseRecording(tabId) {
